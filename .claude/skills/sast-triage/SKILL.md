@@ -1,7 +1,7 @@
 ---
 name: sast-triage
 description: This skill should be used when the user wants to triage SAST scan results, analyze security findings as true or false positives, review AppScan or Semgrep output, assess whether a vulnerability finding is exploitable, or classify code scanning alerts. Triggers on phrases like "triage these findings", "is this a false positive", "review my SAST results", "analyze this security scan", "which findings should I fix", or when the user pastes raw SAST tool output.
-version: 1.0.0
+version: 1.0.1
 ---
 
 # SAST Triage Skill
@@ -14,6 +14,10 @@ When presented with SAST findings, determine for each one:
 - **FALSE POSITIVE** — a false alarm that can be safely dismissed
 
 ## Triage Methodology
+
+Before triaging, determine scope:
+- If the user specifies a limit (for example, "analyze first 20 findings"), only triage that many findings.
+- If no limit is specified, triage all findings.
 
 For each finding:
 1. **Understand the code** — read the flagged snippet and surrounding context
@@ -30,4 +34,4 @@ For every finding:
 - **Remediation**: If TRUE POSITIVE — a concrete fix. If FALSE POSITIVE — why it can be dismissed.
 
 ## Output
-Structure output as a prioritized triage report (Critical/High first), with a summary table followed by detailed findings. If asked to save the report, write it to `triage-report.md`.
+Structure output as a prioritized triage report (Critical/High first), with a summary table followed by detailed findings. Include both total findings available and findings analyzed when a limit is applied. If asked to save the report, write it to `triage-report.md`.

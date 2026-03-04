@@ -106,7 +106,33 @@ Google offers two relevant tools: the [Gemini CLI](https://developers.google.com
 
 **Recommendation**: Use **Gemini CLI** for clients in the Google ecosystem. Avoid Antigravity for SAST triage until its security posture improves.
 
-### 3.3 Microsoft Ecosystem: Azure AI Foundry
+### 3.3 GitHub Ecosystem: Copilot CLI + Coding Agent
+
+[GitHub Copilot CLI](https://github.blog/changelog/2026-02-25-github-copilot-cli-is-now-generally-available/) reached general availability in February 2026 and has evolved into a full agentic coding environment. For clients already on GitHub, this is arguably the most natural fit — and it's multi-model, meaning it can use Claude, GPT, or Gemini under the hood.
+
+**How Copilot could enhance the standalone tool:**
+
+- **Custom agents for SAST triage**: Copilot supports [custom agents](https://github.blog/news-insights/product-news/your-stack-your-rules-introducing-custom-agents-in-github-copilot-for-observability-iac-and-security/) defined via `.github/agents/` files. You could create a `sast-triage` agent with your methodology, rubric, and vulnerability guidance baked in — giving clients a near-identical experience to the Claude Code plugin without needing Claude Code.
+- **Built-in security scanning**: The [Copilot coding agent](https://github.blog/ai-and-ml/github-copilot/whats-new-with-github-copilot-coding-agent/) runs code scanning, secret scanning, and dependency vulnerability checks as part of its workflow. This complements SAST triage — Copilot can flag additional issues (committed API keys, vulnerable dependencies) that Semgrep may not catch.
+- **Cloud background delegation**: Prefix any prompt with `&` to delegate the triage job to a cloud-hosted coding agent that runs in a GitHub Actions-powered environment. The agent works in the background while the analyst continues other work, then opens a PR with the triage report.
+- **Multi-model support**: Copilot lets users choose from Claude Opus 4.6, Claude Sonnet 4.6, GPT-5.3-Codex, GPT-4.1, and Gemini 3 Pro. Clients can select the model that best balances accuracy and cost for their triage needs — without changing any tooling.
+- **Specialized sub-agents**: Copilot automatically delegates to built-in agents (Explore for codebase analysis, Task for running builds/tests, Code Review for change review). For SAST triage, the Explore agent could handle code navigation while the main agent performs vulnerability analysis.
+- **Self-review before output**: The coding agent reviews its own changes using Copilot code review before opening a PR — an extra quality gate that could catch inconsistencies in the triage report.
+- **CLI autopilot mode**: For trusted workflows, autopilot mode lets Copilot work autonomously — executing tools, running commands, and iterating without stopping for approval. Ideal for batch triage of large scan results.
+
+**Enterprise advantages:**
+
+- On Business and Enterprise tiers, Copilot CLI inherits GitHub's enterprise tooling: SSO, team-level permissions, audit log export, and data residency controls. This is often the deciding factor for organizations with compliance requirements.
+- Every client already using GitHub has a natural path to Copilot — no new vendor relationship, procurement process, or infrastructure needed.
+
+**Limitations:**
+
+- Copilot's security analysis tends to be scoped to the immediate file context rather than full repository-wide data flow tracing. For complex cross-file vulnerability chains, Claude Code's deeper exploration may produce more accurate results.
+- Custom agents are still a relatively new feature — the configuration surface is less mature than Claude Code's skill/command system.
+
+**Recommendation**: **Strong option for any client already on GitHub**. The combination of custom agents, multi-model support, built-in security scanning, and enterprise governance makes this the most practical alternative to Claude Code for most teams. Use Claude Opus 4.6 or Sonnet 4.6 as the backing model within Copilot for best triage accuracy.
+
+### 3.4 Microsoft Ecosystem: Azure AI Foundry
 
 For enterprise clients already on Azure:
 
@@ -117,19 +143,21 @@ For enterprise clients already on Azure:
 
 **Recommendation**: Use **Azure AI Foundry** for clients who need data residency guarantees and Azure DevOps integration.
 
-### 3.4 Provider Comparison Matrix
+### 3.5 Provider Comparison Matrix
 
-| Capability | Claude Code | OpenAI Codex | Gemini CLI | Azure AI Foundry |
-|---|---|---|---|---|
-| Agentic file access | Native | Cloud sandbox | ReAct loop | Custom agent |
-| Dynamic code exploration | Full | Full (sandboxed) | Full | Build custom |
-| Multi-agent coordination | Agent Teams | Parallel sandboxes | Agent mode | Agent Service |
-| MCP / external integrations | Native MCP | Limited (no network in sandbox) | MCP support | Azure services |
-| Data residency control | Local execution | Cloud (OpenAI-managed) | Cloud (Google) | Client's Azure tenant |
-| CI/CD integration | CLI / hooks | `codex e` + Autofix | CLI | Azure DevOps native |
-| Free tier | No | No (ChatGPT subscription) | Yes (1K req/day) | Pay-as-you-go |
-| Security maturity | High | High (sandboxed) | Moderate | High (enterprise) |
-| Best for | Teams using Claude | Teams using OpenAI | Cost-sensitive / Google shops | Regulated industries |
+| Capability | Claude Code | GitHub Copilot | OpenAI Codex | Gemini CLI | Azure AI Foundry |
+|---|---|---|---|---|---|
+| Agentic file access | Native | CLI + cloud agent | Cloud sandbox | ReAct loop | Custom agent |
+| Dynamic code exploration | Full (repo-wide) | File-scoped (improving) | Full (sandboxed) | Full | Build custom |
+| Multi-agent coordination | Agent Teams | Specialized sub-agents | Parallel sandboxes | Agent mode | Agent Service |
+| Multi-model support | Claude only | Claude, GPT, Gemini | GPT only | Gemini only | Multi-model |
+| MCP / external integrations | Native MCP | GitHub ecosystem | Limited (no network) | MCP support | Azure services |
+| Built-in security scanning | Via plugin | Native (code + secret + deps) | No | No | No |
+| Data residency control | Local execution | Cloud (GitHub-managed) | Cloud (OpenAI-managed) | Cloud (Google) | Client's Azure tenant |
+| CI/CD integration | CLI / hooks | GitHub Actions native | `codex e` + Autofix | CLI | Azure DevOps native |
+| Enterprise governance | Limited | SSO, audit logs, RBAC | ChatGPT subscription | Free tier available | Enterprise-grade |
+| Custom agent/skill system | Skills + commands | `.github/agents/` | CODEX.md instructions | CLI config | Build custom |
+| Best for | Deep analysis accuracy | Teams already on GitHub | Teams using OpenAI | Cost-sensitive / Google | Regulated industries |
 
 ---
 

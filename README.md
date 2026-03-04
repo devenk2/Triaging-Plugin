@@ -69,7 +69,7 @@ For other languages, replace `p/java` with the appropriate ruleset (e.g., `p/pyt
 |----------|------|---------|-------------|
 | **Arg 1** | Path | `sast-results.json` | Path to Semgrep JSON report file. Can be relative or absolute. |
 | **Arg 2** | Path | `BenchmarkJava-master/` | Path to the scanned source code repository root. The plugin reads source files from here to analyze findings in context. |
-| **Arg 3** | String (optional) | `”Java EE web application, OWASP Benchmark test suite, intentionally vulnerable code for security tool evaluation”` | Context about the repository to inform triage decisions. Include: purpose/function, tech stack (languages/frameworks), deployment (internal/external/cloud), and any relevant security notes. This helps distinguish between exploitable vulnerabilities and false positives based on actual application behavior. |
+| **Arg 3** | String or File Path (optional) | `”Java EE web application...”` or `context.md` | Context about the repository to inform triage decisions. Can be either: (1) **inline text** with purpose/function, tech stack (languages/frameworks), deployment (internal/external/cloud), security notes, or (2) **path to a file** (.txt, .md, .json) containing the context. File paths are automatically detected and read. Helps distinguish between exploitable vulnerabilities and false positives based on actual application behavior. |
 | **Arg 4** | Integer (optional) | `20` | Maximum number of findings to analyze. Limits analysis to the first N findings (sorted by severity). Useful for large scans. Omit to analyze all findings. |
 
 #### Detailed Example Walkthrough
@@ -125,7 +125,7 @@ Each report includes:
    - Scan date and tool (Semgrep)
    - Repository path
    - Total findings in scan, findings analyzed, limit applied
-   - True/False positive counts
+   - True Positives, False Positives, Needs Human Review counts
 
 2. **Executive Summary**
    - 2-3 sentence overview of key risk areas
@@ -134,35 +134,98 @@ Each report includes:
 
 3. **Summary Table**
    - Quick reference with file, line number, vulnerability type, severity
-   - Verdict (✅ TRUE POSITIVE / ❌ FALSE POSITIVE)
-   - Confidence level (High / Medium / Low)
+   - Verdict (✅ TRUE POSITIVE / ❌ FALSE POSITIVE / ⚠️ NEEDS HUMAN REVIEW)
+   - **Confidence (percentage 0–100%)** — Evidence-based scoring using the confidence rubric
 
 4. **Detailed Findings**
    - For each finding:
      - File path and line number
      - Semgrep rule ID
-     - Verdict and confidence level
-     - Explanation of why it's true/false positive with code context
-     - Specific remediation steps
+     - Verdict (TP/FP/NHR) with percentage confidence
+     - Explanation citing specific code evidence and vulnerability guidance indicators
+     - Actionable remediation (for TP), dismissal rationale (for FP), or investigation guidance (for NHR)
 
 ## Triage Methodology
 
 For each finding, the plugin:
 
-1. **Reads the flagged code** and surrounding context (±25 lines)
-2. **Traces the data flow** — Does user-controlled input actually reach the vulnerable sink?
-3. **Checks for protections** — Encoding, validation, parameterized queries, framework guards
-4. **Considers context** — Application purpose, framework capabilities, deployment model
-5. **Assigns verdict** — TRUE POSITIVE (exploitable) or FALSE POSITIVE (safe)
-6. **Rates confidence** — High (certain), Medium (likely), Low (uncertain)
+1. **Looks up vulnerability guidance** — Consults `.claude/vulnerability-guidance.json` for vulnerability-type-specific indicators (true positive patterns, false positive patterns)
+2. **Reads the flagged code** and surrounding context (±25 lines)
+3. **Traces the data flow** — Does user-controlled input actually reach the vulnerable sink?
+4. **Checks for protections** — Encoding, validation, parameterized queries, framework guards (compared against FP patterns)
+5. **Considers context** — Application purpose, framework capabilities, deployment model
+6. **Assigns verdict** — ✅ TRUE POSITIVE (exploitable), ❌ FALSE POSITIVE (safe), or ⚠️ NEEDS HUMAN REVIEW (ambiguous)
+7. **Calculates confidence** — Evidence-based percentage (0–100%) using the confidence scoring rubric:
+   - Clear input source: +25%
+   - Direct data flow to sink: +25%
+   - No sanitization: +20%
+   - Matches vulnerability pattern: +15%
+   - External exposure: +10%
+   - Capped at 95%, floored at 5%
+
+## Vulnerability Guidance and Confidence Scoring
+
+### Vulnerability Guidance Table (`.claude/vulnerability-guidance.json`)
+
+The plugin uses a centralized JSON lookup table containing vulnerability-type-specific guidance:
+
+```json
+{
+  "SQL Injection": {
+    "true_positive_indicators": [...],
+    "false_positive_patterns": [...]
+  },
+  "Path Traversal": { ... },
+  "Cross-Site-Scripting (XSS)": { ... },
+  ...
+}
+```
+
+**Vulnerability types covered:**
+- SQL Injection, Path Traversal, Cross-Site-Scripting (XSS), Command Injection
+- Deserialization, LDAP Injection, XXE (XML External Entity), SSRF
+- Cryptographic Issues, Insecure Hashing Algorithm, XPath Injection, and more
+
+**Why this matters:** Instead of using subjective confidence levels, the plugin references concrete TP/FP indicators for each vulnerability class. This makes triage decisions more consistent and evidence-based.
+
+### Confidence Scoring Rubric
+
+Confidence is calculated as a percentage (0–100%) by summing evidence factors:
+
+| Factor | Points | Explanation |
+|--------|--------|-------------|
+| Clear source of untrusted input | +25% | HTTP parameter, header, cookie, user session |
+| Direct data flow to sink | +25% | Unbroken chain from input to vulnerable function |
+| No sanitization/validation | +20% | No encoding, filtering, or parameterized queries |
+| Matches vulnerability pattern | +15% | Code pattern matches known-exploitable indicators |
+| External exposure | +10% | Application exposed to untrusted users (e.g., internet-facing) |
+| Data flow ambiguity | −15% | Partial trace, unclear protection effectiveness |
+| Possible upstream protection | −10% | Unconfirmed protection in calling code |
+| Framework implicit protection | −10% | Framework may auto-protect but not certain |
+
+**Result:** Sum factors, cap at 95% (static analysis certainty limit), floor at 5%.
+
+**Example:** A direct SQL injection (no PreparedStatement) = +25% (input) +25% (flow) +20% (no sanitization) +15% (pattern) +10% (external) = 95%
+
+### Verdict Types
+
+- **✅ TRUE POSITIVE (TP):** Real, exploitable vulnerability. Requires remediation.
+- **❌ FALSE POSITIVE (FP):** False alarm. Safe to dismiss with documented rationale.
+- **⚠️ NEEDS HUMAN REVIEW (NHR):** Cannot determine statically. Confidence typically 35–60%. Requires investigation of specific ambiguous aspects.
 
 ## Common Use Cases
 
-### Review High-Priority Findings
+### Review High-Priority Findings (Inline Context)
 ```bash
 /triage-sast scan-results.json ./src/ “Production Node.js API, externally facing” 50
 ```
 Analyze the 50 highest-severity findings from a production Node.js API.
+
+### Review High-Priority Findings (File-Based Context)
+```bash
+/triage-sast scan-results.json ./src/ context.md 50
+```
+Analyze the 50 highest-severity findings using context from `context.md` (useful for complex or lengthy context descriptions).
 
 ### Full Scan Triage
 ```bash
@@ -186,11 +249,38 @@ The `sast-triage` skill will auto-trigger and analyze them.
 
 ## Tips for Best Results
 
-- **Provide context:** Detailed repository context helps distinguish FP from TP
-- **Use limits on large scans:** Analyze highest-severity findings first
-- **Review confidence levels:** “Medium” or “Low” confidence findings may need manual review
-- **Keep reports organized:** The timestamped directory structure lets you track trends
-- **Re-scan after fixes:** Run triage on updated code to verify remediation
+- **Provide context (inline or file):** Detailed repository context helps distinguish FP from TP. Use a `.md` or `.txt` file for complex context descriptions
+- **Use limits on large scans:** Analyze highest-severity findings first with the limit parameter
+- **Review percentage confidence:** Findings with 35–60% confidence may warrant “NEEDS HUMAN REVIEW” verdicts. Investigate the specific questions in the report
+- **Understand the guidance table:** Check `.claude/vulnerability-guidance.json` to see what the plugin looks for when triaging each vulnerability type
+- **Keep reports organized:** The timestamped directory structure lets you track trends and remediation progress over time
+- **Re-scan after fixes:** Run triage on updated code to verify remediation and see confidence scores improve
+
+## What's New (v2.0)
+
+The plugin has been enhanced with four major features:
+
+### 1. **Percentage-Based Confidence** (Not High/Medium/Low)
+Instead of subjective confidence levels, each finding receives a percentage score (0–100%) calculated from objective evidence factors. This makes confidence assessments more transparent and defensible.
+
+### 2. **File-Based Context Support**
+Arg 3 now accepts file paths (.txt, .md, .json) in addition to inline text. Automatically detects and reads the file, so you can maintain detailed context descriptions without command-line length constraints.
+
+```bash
+/triage-sast sast-results.json repo/ context-production-java.md 50
+```
+
+### 3. **Centralized Vulnerability Guidance**
+A JSON lookup table (`.claude/vulnerability-guidance.json`) contains vulnerability-type-specific true positive and false positive patterns. This ensures consistent, evidence-based triaging across all findings without modifying the triage logic.
+
+**Current coverage:** SQL Injection, Path Traversal, XSS, Command Injection, LDAP Injection, XXE, SSRF, Cryptographic Issues, Insecure Hashing, XPath Injection, and more.
+
+### 4. **"Needs Human Review" Verdict**
+A third verdict option for ambiguous findings where confidence is 35–60% or data flow cannot be fully determined statically. Includes specific investigation guidance for the reviewer.
+
+```
+⚠️ NEEDS HUMAN REVIEW — Determine if the validator at line 42 applies to all callers
+```
 
 ## Inputs and Outputs Summary
 
